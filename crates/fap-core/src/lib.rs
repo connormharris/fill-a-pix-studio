@@ -1,5 +1,6 @@
 pub mod clues;
 pub mod error;
+pub mod format;
 pub mod grid;
 pub mod puzzle;
 pub mod regions;
