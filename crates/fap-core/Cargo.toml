@@ -6,3 +6,4 @@ version.workspace = true
 
 [dependencies]
 thiserror = "2.0.21"
+toml = "1.1.8"
