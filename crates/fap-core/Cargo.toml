@@ -1,0 +1,8 @@
+[package]
+name = "fap-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+thiserror = "2.0.21"
