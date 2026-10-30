@@ -7,6 +7,8 @@ pub const MAX_LEVEL: u8 = 4;
 pub const MAX_MARGIN: u8 = 2;
 pub const DEFAULT_MARGIN: u8 = 2;
 pub const DEFAULT_LEVEL: u8 = 2;
+/// Largest region ID accepted from files; keeps `next_id` arithmetic far from overflow.
+pub const MAX_REGION_ID: u32 = u32::MAX / 2;
 
 /// Identifier of a region; positive in files, unique within a `Regions`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -21,13 +23,26 @@ pub struct RegionSettings {
 }
 
 /// A partition of (part of) the grid into regions. Cells may belong to no region.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// Equality compares the map, table and default level only. `next_id` is a
+/// non-persisted allocation cursor (files never store it), so it is ignored.
+#[derive(Clone, Debug)]
 pub struct Regions {
     map: Grid<Option<RegionId>>,
     table: BTreeMap<RegionId, RegionSettings>,
     default_level: u8,
     next_id: u32,
 }
+
+impl PartialEq for Regions {
+    fn eq(&self, other: &Regions) -> bool {
+        self.map == other.map
+            && self.table == other.table
+            && self.default_level == other.default_level
+    }
+}
+
+impl Eq for Regions {}
 
 fn check_level(level: u8, what: &str) -> Result<()> {
     if (MIN_LEVEL..=MAX_LEVEL).contains(&level) {
@@ -67,29 +82,16 @@ impl Regions {
         table: BTreeMap<RegionId, RegionSettings>,
         default_level: u8,
     ) -> Result<Regions> {
-        check_level(default_level, "default")?;
-        for (id, s) in &table {
-            check_level(s.level, &format!("region {}", id.0))?;
-            check_margin(s.margin, &format!("region {}", id.0))?;
-        }
-        for p in map.positions() {
-            if let Some(id) = *map.get(p)
-                && !table.contains_key(&id)
-            {
-                return Err(CoreError::Format(format!(
-                    "region {} at {} is not defined",
-                    id.0,
-                    p.describe()
-                )));
-            }
-        }
+        Self::check_parts(&map, &table, default_level)?;
         let max_map = map
             .positions()
             .filter_map(|p| *map.get(p))
             .map(|i| i.0)
             .max();
         let max_table = table.keys().next_back().map(|i| i.0);
-        let next_id = max_map.max(max_table).map_or(1, |m| m + 1);
+        let next_id = max_map
+            .max(max_table)
+            .map_or(1, |m| m.checked_add(1).expect("region id too large"));
         let mut r = Regions {
             map,
             table,
@@ -98,6 +100,54 @@ impl Regions {
         };
         r.normalize();
         Ok(r)
+    }
+
+    fn check_parts(
+        map: &Grid<Option<RegionId>>,
+        table: &BTreeMap<RegionId, RegionSettings>,
+        default_level: u8,
+    ) -> Result<()> {
+        check_level(default_level, "default")?;
+        for (id, s) in table {
+            if id.0 > MAX_REGION_ID {
+                return Err(CoreError::Format(format!(
+                    "region id {} is too large",
+                    id.0
+                )));
+            }
+            check_level(s.level, &format!("region {}", id.0))?;
+            check_margin(s.margin, &format!("region {}", id.0))?;
+        }
+        for p in map.positions() {
+            if let Some(id) = *map.get(p) {
+                if id.0 > MAX_REGION_ID {
+                    return Err(CoreError::Format(format!(
+                        "region id {} is too large",
+                        id.0
+                    )));
+                }
+                if !table.contains_key(&id) {
+                    return Err(CoreError::Format(format!(
+                        "region {} at {} is not defined",
+                        id.0,
+                        p.describe()
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks levels (including the default, 1-4), margins (0-2) and that every map ID
+    /// is in the table. Mutators do not validate; writers call this.
+    pub fn validate(&self) -> Result<()> {
+        Self::check_parts(&self.map, &self.table, self.default_level)
+    }
+
+    fn alloc_id(&mut self) -> RegionId {
+        let id = RegionId(self.next_id);
+        self.next_id = self.next_id.checked_add(1).expect("region id overflow");
+        id
     }
 
     pub fn map(&self) -> &Grid<Option<RegionId>> {
@@ -154,8 +204,7 @@ impl Regions {
 
     /// Adds a region with a fresh ID and no cells.
     pub fn create_region(&mut self, s: RegionSettings) -> RegionId {
-        let id = RegionId(self.next_id);
-        self.next_id += 1;
+        let id = self.alloc_id();
         self.table.insert(id, s);
         id
     }
@@ -211,8 +260,7 @@ impl Regions {
                 new_table.insert(id, self.table[&id].clone());
                 continue;
             }
-            let new_id = RegionId(self.next_id);
-            self.next_id += 1;
+            let new_id = self.alloc_id();
             new_table.insert(new_id, self.table[&id].clone());
             for p in cells {
                 self.map.set(p, Some(new_id));

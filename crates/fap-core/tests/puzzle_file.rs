@@ -50,3 +50,32 @@ fn regions_section_is_optional() {
     let p = format::load_puzzle(text).unwrap();
     assert!(p.regions.table().is_empty());
 }
+
+#[test]
+fn stats_datetime_survives_round_trip() {
+    let text = format::save_puzzle(&sample())
+        .replace("[stats]\n", "[stats]\nwhen = 2026-10-29T10:00:00Z\n");
+    let p = format::load_puzzle(&text).unwrap();
+    assert!(matches!(
+        p.stats.get("when"),
+        Some(toml::Value::Datetime(_))
+    ));
+    let again = format::load_puzzle(&format::save_puzzle(&p)).unwrap();
+    assert!(matches!(
+        again.stats.get("when"),
+        Some(toml::Value::Datetime(_))
+    ));
+    assert_eq!(again, p);
+}
+
+#[test]
+fn write_rejects_out_of_range_digit() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("a.puzzle.toml");
+    let mut p = sample();
+    format::write_puzzle_file(&path, &p).unwrap();
+    let before = std::fs::read_to_string(&path).unwrap();
+    p.clues.set(Pos::new(0, 1), Clue::Digit(12));
+    assert!(format::write_puzzle_file(&path, &p).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+}

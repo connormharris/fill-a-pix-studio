@@ -11,6 +11,10 @@ pub enum Clue {
     GivenUnshaded,
 }
 
+/// A puzzle with its solution.
+///
+/// Equality compares the opaque tables too, so a NaN float in `generation` / `stats`
+/// makes a value unequal to itself; producers of `[stats]` must not emit NaN.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Puzzle {
     pub title: Option<String>,
@@ -22,7 +26,13 @@ pub struct Puzzle {
 }
 
 impl Puzzle {
+    /// Requires `regions` to have the same dimensions as `image` (debug-asserted).
     pub fn fully_clued(image: &Image, regions: Regions) -> Puzzle {
+        debug_assert_eq!(
+            (regions.width(), regions.height()),
+            (image.width(), image.height()),
+            "regions must match the image dimensions"
+        );
         Puzzle {
             title: None,
             clues: all_clues(image).map(|&d| Clue::Digit(d)),
@@ -46,11 +56,18 @@ impl Puzzle {
                 )));
             }
         }
+        self.regions.validate()?;
         for p in self.clues.positions() {
             let shaded = *self.solution.get(p);
             match *self.clues.get(p) {
                 Clue::Blank => {}
                 Clue::Digit(d) => {
+                    if d > 9 {
+                        return Err(CoreError::Format(format!(
+                            "clue {d} at {} is out of range (0-9)",
+                            p.describe()
+                        )));
+                    }
                     let expected = clue_at(&self.solution, p);
                     if d != expected {
                         return Err(CoreError::Format(format!(

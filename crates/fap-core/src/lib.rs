@@ -12,3 +12,4 @@ pub use grid::{Grid, Image, Pos};
 pub use project::Project;
 pub use puzzle::{Clue, Puzzle};
 pub use regions::{RegionId, RegionSettings, Regions};
+pub use toml;

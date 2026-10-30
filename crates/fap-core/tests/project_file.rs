@@ -152,3 +152,72 @@ fn zero_dimensions_and_bad_region_settings_are_format_errors() {
     assert!(matches!(e, CoreError::Format(_)));
     assert!(e.to_string().starts_with("[regions] "), "{e}");
 }
+
+fn simple_project_text(extra: &str) -> String {
+    format!(
+        "format = \"fill-a-pix-project\"\nversion = 1\nwidth = 2\nheight = 1\n\n[image]\nrows = \"\"\"\n#.\n\"\"\"\n{extra}"
+    )
+}
+
+#[test]
+fn generation_datetime_survives_round_trip() {
+    let text = simple_project_text("\n[generation]\nwhen = 2026-10-29T10:00:00Z\n");
+    let p = format::load_project(&text).unwrap();
+    assert!(matches!(
+        p.generation.get("when"),
+        Some(toml::Value::Datetime(_))
+    ));
+    let again = format::load_project(&format::save_project(&p)).unwrap();
+    assert!(matches!(
+        again.generation.get("when"),
+        Some(toml::Value::Datetime(_))
+    ));
+    assert_eq!(again, p);
+}
+
+#[test]
+fn round_trip_equal_after_deleting_highest_region() {
+    let mut p = Project::new(2, 1);
+    let a = p.regions.create_region(p.regions.default_settings());
+    let b = p.regions.create_region(p.regions.default_settings());
+    p.regions.assign(Pos::new(0, 0), Some(a));
+    p.regions.assign(Pos::new(0, 1), Some(b));
+    p.regions.assign(Pos::new(0, 1), None);
+    p.regions.normalize();
+    let loaded = format::load_project(&format::save_project(&p)).unwrap();
+    assert_eq!(loaded, p);
+}
+
+#[test]
+fn huge_region_id_is_rejected_not_panicking() {
+    let text = simple_project_text(
+        "\n[regions]\ndefault_level = 2\nrows = \"\"\"\n4294967295 .\n\"\"\"\n\n[[region]]\nid = 4294967295\nlevel = 2\nmargin = 2\n",
+    );
+    let e = format::load_project(&text).unwrap_err();
+    assert!(matches!(e, CoreError::Format(_)), "{e:?}");
+    assert!(e.to_string().contains("too large"), "{e}");
+}
+
+#[test]
+fn write_rejects_invalid_level_and_keeps_old_file() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("a.project.toml");
+    let mut p = Project::new(2, 1);
+    let id = p.regions.create_region(p.regions.default_settings());
+    p.regions.assign(Pos::new(0, 0), Some(id));
+    format::write_project_file(&path, &p).unwrap();
+    let before = std::fs::read_to_string(&path).unwrap();
+    p.regions.settings_mut(id).unwrap().level = 0;
+    assert!(format::write_project_file(&path, &p).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+}
+
+#[test]
+fn write_rejects_region_dims_mismatch() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("a.project.toml");
+    let mut p = Project::new(2, 1);
+    p.regions = fap_core::Regions::new(3, 1, 2);
+    assert!(format::write_project_file(&path, &p).is_err());
+    assert!(!path.exists());
+}

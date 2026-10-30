@@ -1,5 +1,5 @@
 use super::common::{
-    RawRegion, RawRegions, check_dims, check_header, from_table, in_section, parse_table,
+    RawRegion, RawRegions, check_dims, check_header, from_text, in_section, parse_table,
     regions_from_raw, regions_to_raw, write_atomic,
 };
 use super::{FORMAT_VERSION, PUZZLE_FORMAT, gridtext};
@@ -36,7 +36,7 @@ struct RawPuzzle {
 pub fn load_puzzle(text: &str) -> Result<Puzzle> {
     let table = parse_table(text)?;
     check_header(&table, PUZZLE_FORMAT)?;
-    let raw: RawPuzzle = from_table(table)?;
+    let raw: RawPuzzle = from_text(text)?;
     let (w, h) = check_dims(raw.width, raw.height)?;
     let clues =
         gridtext::parse_clue_rows(&raw.clues.rows, w, h).map_err(|e| in_section("[clues]", e))?;
@@ -82,6 +82,8 @@ pub fn read_puzzle_file(path: &Path) -> Result<Puzzle> {
     load_puzzle(&text)
 }
 
+/// Validates first (the file is left untouched on error). `save_puzzle` does not validate.
 pub fn write_puzzle_file(path: &Path, p: &Puzzle) -> Result<()> {
-    write_atomic(path, &save_puzzle(p))
+    p.validate()?;
+    write_atomic(path, save_puzzle(p).as_bytes())
 }

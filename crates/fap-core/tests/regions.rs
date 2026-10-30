@@ -164,3 +164,20 @@ fn strips_narrower_than_strip_width_is_one_region() {
         }
     );
 }
+
+#[test]
+fn create_region_after_strips_continues_ids() {
+    let mut r = Regions::strips(6, 2, 2, 1, 3, 1, 2);
+    assert_eq!(r.create_region(s(2)), RegionId(4));
+}
+
+#[test]
+fn validate_flags_bad_settings() {
+    let mut r = Regions::strips(4, 1, 2, 1, 2, 1, 2);
+    assert!(r.validate().is_ok());
+    r.set_default_level(9);
+    assert!(r.validate().is_err());
+    r.set_default_level(2);
+    r.settings_mut(RegionId(1)).unwrap().margin = 3;
+    assert!(r.validate().is_err());
+}

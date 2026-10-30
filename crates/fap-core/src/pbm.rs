@@ -141,5 +141,5 @@ pub fn read_pbm_file(path: &Path) -> Result<Image> {
 }
 
 pub fn write_pbm_file(path: &Path, img: &Image) -> Result<()> {
-    Ok(std::fs::write(path, write_pbm(img))?)
+    crate::format::common::write_atomic(path, &write_pbm(img))
 }

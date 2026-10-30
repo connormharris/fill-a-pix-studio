@@ -1,4 +1,4 @@
-mod common;
+pub(crate) mod common;
 pub mod gridtext;
 mod project_file;
 mod puzzle_file;

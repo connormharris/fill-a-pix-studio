@@ -79,3 +79,12 @@ fn huge_dimensions_without_data_error_instead_of_allocating() {
         Err(CoreError::Pbm(_))
     ));
 }
+
+#[test]
+fn write_pbm_file_leaves_no_temp_file() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("a.pbm");
+    write_pbm_file(&path, &ten_by_two()).unwrap();
+    assert_eq!(read_pbm_file(&path).unwrap(), ten_by_two());
+    assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1);
+}

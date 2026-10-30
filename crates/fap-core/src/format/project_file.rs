@@ -1,5 +1,5 @@
 use super::common::{
-    RawRegion, RawRegions, check_dims, check_header, from_table, in_section, parse_table,
+    RawRegion, RawRegions, check_dims, check_header, from_text, in_section, parse_table,
     regions_from_raw, regions_to_raw, write_atomic,
 };
 use super::{FORMAT_VERSION, PROJECT_FORMAT, gridtext};
@@ -35,7 +35,7 @@ struct RawProject {
 pub fn load_project(text: &str) -> Result<Project> {
     let table = parse_table(text)?;
     check_header(&table, PROJECT_FORMAT)?;
-    let raw: RawProject = from_table(table)?;
+    let raw: RawProject = from_text(text)?;
     let (w, h) = check_dims(raw.width, raw.height)?;
     let image =
         gridtext::parse_image_rows(&raw.image.rows, w, h).map_err(|e| in_section("[image]", e))?;
@@ -73,6 +73,8 @@ pub fn read_project_file(path: &Path) -> Result<Project> {
     load_project(&text)
 }
 
+/// Validates first (the file is left untouched on error). `save_project` does not validate.
 pub fn write_project_file(path: &Path, p: &Project) -> Result<()> {
-    write_atomic(path, &save_project(p))
+    p.validate()?;
+    write_atomic(path, save_project(p).as_bytes())
 }

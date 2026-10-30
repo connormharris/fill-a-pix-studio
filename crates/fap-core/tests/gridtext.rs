@@ -67,3 +67,9 @@ fn empty_region_map_emits_dots() {
     let m: Grid<Option<RegionId>> = Grid::new(3, 1, None);
     assert_eq!(region_rows(&m), ". . .\n");
 }
+
+#[test]
+fn region_token_edge_cases() {
+    assert!(parse_region_rows("4294967296\n", 1, 1).is_err());
+    assert!(parse_region_rows("+1\n", 1, 1).is_err());
+}

@@ -3,9 +3,10 @@
 use crate::error::{CoreError, Result};
 use crate::format::gridtext;
 use crate::grid::Grid;
-use crate::regions::{DEFAULT_LEVEL, RegionId, RegionSettings, Regions};
+use crate::regions::{DEFAULT_LEVEL, MAX_REGION_ID, RegionId, RegionSettings, Regions};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::Path;
 
 pub const PROJECT_FORMAT: &str = "fill-a-pix-project";
@@ -33,6 +34,12 @@ pub(crate) fn from_table<T: serde::de::DeserializeOwned>(table: toml::Table) -> 
     table
         .try_into()
         .map_err(|e: toml::de::Error| CoreError::Format(e.to_string()))
+}
+
+/// Deserializes straight from text (keeps TOML datetimes typed, gives line context).
+pub(crate) fn from_text<T: serde::de::DeserializeOwned>(text: &str) -> Result<T> {
+    toml::from_str(text)
+        .map_err(|e: toml::de::Error| CoreError::Format(e.to_string().trim_end().to_string()))
 }
 
 /// Checks `format` (against `expected`) and `version`.
@@ -103,6 +110,10 @@ pub(crate) fn in_section(section: &str, e: CoreError) -> CoreError {
     }
 }
 
+fn too_large(id: u32) -> CoreError {
+    CoreError::Format(format!("[regions] region id {id} is too large"))
+}
+
 /// Builds `Regions` from the optional `[regions]` section and the `[[region]]` entries.
 pub(crate) fn regions_from_raw(
     raw: Option<RawRegions>,
@@ -125,6 +136,9 @@ pub(crate) fn regions_from_raw(
             margin: e.margin,
             name: e.name,
         };
+        if e.id > MAX_REGION_ID {
+            return Err(too_large(e.id));
+        }
         if table.insert(RegionId(e.id), s).is_some() {
             return Err(CoreError::Format(format!(
                 "[regions] region {} is defined more than once",
@@ -154,7 +168,7 @@ pub(crate) fn regions_to_raw(r: &Regions) -> (RawRegions, Vec<RawRegion>) {
 }
 
 /// Writes to a temp file in the same directory, then renames over `path`.
-pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let name = path
         .file_name()
         .ok_or_else(|| CoreError::Format(format!("invalid file path {}", path.display())))?;
@@ -162,7 +176,13 @@ pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<()> {
     tmp_name.push(name);
     tmp_name.push(".tmp");
     let tmp = path.with_file_name(tmp_name);
-    let result = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, path));
+    let result = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
