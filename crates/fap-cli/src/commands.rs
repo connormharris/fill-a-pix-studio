@@ -3,6 +3,7 @@ use fap_core::format::{
     write_puzzle_file,
 };
 use fap_core::pbm::{read_pbm_file, write_pbm_file};
+use fap_core::regions::{MAX_LEVEL, MAX_MARGIN, MIN_LEVEL};
 use fap_core::{Clue, Image, Project, Puzzle, Regions};
 use std::fmt::{Display, Write as _};
 use std::path::Path;
@@ -55,12 +56,14 @@ pub fn strips(
         return Err("strip width must be at least 1".into());
     }
     for (level, what) in [(start_level, "start"), (end_level, "end")] {
-        if !(1..=4).contains(&level) {
-            return Err(format!("{what} level must be between 1 and 4"));
+        if !(MIN_LEVEL..=MAX_LEVEL).contains(&level) {
+            return Err(format!(
+                "{what} level must be between {MIN_LEVEL} and {MAX_LEVEL}"
+            ));
         }
     }
-    if margin > 2 {
-        return Err("margin must be between 0 and 2".into());
+    if margin > MAX_MARGIN {
+        return Err(format!("margin must be between 0 and {MAX_MARGIN}"));
     }
     let mut project = at(input, read_project_file(input))?;
     project.regions = Regions::strips(

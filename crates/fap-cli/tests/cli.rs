@@ -138,3 +138,30 @@ fn missing_file_reports_path() {
         .stderr(contains("error:"))
         .stderr(contains("/nonexistent/x.project.toml"));
 }
+
+#[test]
+fn strips_rejects_out_of_range_margin() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("s.project.toml");
+    fap()
+        .args(["new", "--width", "10", "--height", "2", "-o"])
+        .arg(&p)
+        .assert()
+        .success();
+    fap()
+        .arg("strips")
+        .arg(&p)
+        .args([
+            "--strip-width",
+            "5",
+            "--start",
+            "1",
+            "--end",
+            "4",
+            "--margin",
+            "3",
+        ])
+        .assert()
+        .code(1)
+        .stderr(contains("error:"));
+}
