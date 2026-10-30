@@ -62,10 +62,20 @@ fn rejects_overflow_bad_chars_and_ignores_trailing() {
 
 #[test]
 fn file_round_trip() {
-    let dir = std::env::temp_dir().join(format!("fap-pbm-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("a.pbm");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("a.pbm");
     write_pbm_file(&path, &ten_by_two()).unwrap();
     assert_eq!(read_pbm_file(&path).unwrap(), ten_by_two());
-    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn huge_dimensions_without_data_error_instead_of_allocating() {
+    assert!(matches!(
+        read_pbm(b"P4\n100000 100000\n"),
+        Err(CoreError::Pbm(_))
+    ));
+    assert!(matches!(
+        read_pbm(b"P1\n100000 100000\n"),
+        Err(CoreError::Pbm(_))
+    ));
 }

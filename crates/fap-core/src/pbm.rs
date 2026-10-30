@@ -71,8 +71,13 @@ pub fn read_pbm(bytes: &[u8]) -> Result<Image> {
     let height = cur.dimension("height")?;
     let row_bytes = width.div_ceil(8);
     let too_big = || CoreError::Pbm("dimensions too large".into());
-    row_bytes.checked_mul(height).ok_or_else(too_big)?;
-    width.checked_mul(height).ok_or_else(too_big)?;
+    let raster = row_bytes.checked_mul(height).ok_or_else(too_big)?;
+    let pixels = width.checked_mul(height).ok_or_else(too_big)?;
+    // Each P4 byte / P1 pixel needs input, so check before allocating.
+    let remaining = bytes.len() - cur.at;
+    if remaining < if p4 { raster + 1 } else { pixels } {
+        return err("truncated PBM data");
+    }
 
     let mut img = Grid::new(width, height, false);
     if p4 {
